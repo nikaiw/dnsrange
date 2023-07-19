@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 )
 
@@ -32,12 +33,19 @@ func init() {
 	flag.StringVar(&output, "output", "", "Output file (default: stdout)")
 	flag.StringVar(&format, "f", "txt", "Output format: txt, csv (default: txt)")
 	flag.StringVar(&format, "format", "txt", "Output format: txt, csv (default: txt)")
-	flag.IntVar(&timeout, "t", 5, "-t or --timeout : Dial timeout in seconds (default: 5)")
-	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <IP range> <ports>\n", os.Args[0])
-		fmt.Fprintln(flag.CommandLine.Output(), "Options:")
-		flag.PrintDefaults()
-	}
+	flag.IntVar(&timeout, "timeout", 5, "-t or --timeout : Socket timeout in seconds (default: 5)")
+	flag.IntVar(&timeout, "t", 5, "-t or --timeout : Socket timeout in seconds (default: 5)")
+}
+
+func printUsage() {
+	fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", os.Args[0])
+	fmt.Fprintln(os.Stderr, "Options:")
+	w := tabwriter.NewWriter(os.Stderr, 0, 0, 4, ' ', 0)
+	fmt.Fprintln(w, "\t-v, --verbose\t\tDisplay errors")
+	fmt.Fprintln(w, "\t-o, --output\t\tOutput file (default: stdout)")
+	fmt.Fprintln(w, "\t-f, --format\t\tOutput format: txt, csv (default: txt)")
+	fmt.Fprintln(w, "\t-t, --timeout\t\tSocket timeout in seconds (default: 5)")
+	w.Flush()
 }
 
 func main() {
@@ -49,7 +57,7 @@ func main() {
 	}
 
 	if flag.NArg() < 2 {
-		flag.Usage()
+		printUsage()
 		os.Exit(1)
 	}
 
@@ -100,10 +108,9 @@ func main() {
 		csvWriter = csv.NewWriter(outputWriter)
 		defer csvWriter.Flush()
 	}
-
 	seenNames := make(map[string]map[string]bool)
-
 	for r := range results {
+
 		if _, ok := seenNames[r.IP]; !ok {
 			seenNames[r.IP] = make(map[string]bool)
 		}
@@ -157,6 +164,7 @@ func processCertificates(tlsConn *tls.Conn, IP string, results chan<- result) {
 	certs := tlsConn.ConnectionState().PeerCertificates
 	for _, cert := range certs {
 		name := cert.Subject.CommonName
+		results <- result{IP: IP, Name: name, Type: "SSL"}
 		for _, altName := range cert.DNSNames {
 			results <- result{IP: IP, Name: name, Type: "SSL"}
 			name = altName
