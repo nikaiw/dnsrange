@@ -22,7 +22,7 @@ var (
 	verbose bool
 	output  string
 	format  string
-	timeout time.Duration
+	timeout int
 )
 
 func init() {
@@ -32,7 +32,7 @@ func init() {
 	flag.StringVar(&output, "output", "", "Output file (default: stdout)")
 	flag.StringVar(&format, "f", "txt", "Output format: txt, csv (default: txt)")
 	flag.StringVar(&format, "format", "txt", "Output format: txt, csv (default: txt)")
-	flag.DurationVar(&timeout, "t", 5*time.Second, "-t or --timeout : Dial timeout duration (default: 5s)")
+	flag.IntVar(&timeout, "t", 5, "-t or --timeout : Dial timeout in seconds (default: 5)")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <IP range> <ports>\n", os.Args[0])
 		fmt.Fprintln(flag.CommandLine.Output(), "Options:")
@@ -141,7 +141,8 @@ func processIPPort(IP, port string, results chan<- result) {
 }
 
 func createConn(addr string) (net.Conn, error) {
-	return net.DialTimeout("tcp", addr, timeout)
+	timeoutDuration := time.Duration(timeout) * time.Second
+	return net.DialTimeout("tcp", addr, timeoutDuration)
 }
 
 func createTLSConn(conn net.Conn) (*tls.Conn, error) {
