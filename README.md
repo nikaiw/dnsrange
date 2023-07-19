@@ -17,3 +17,11 @@ Options:
   -verbose
     	Display errors
 ```
+
+
+Example:
+
+![example](https://github.com/nikaiw/dnsrange/assets/1255732/fe5800ad-b5c8-478c-9d65-9a1a6ee975b0)
+
+
+
