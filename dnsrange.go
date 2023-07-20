@@ -38,7 +38,7 @@ func init() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage: %s [options] <IP range> <ports>\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "Options:")
 	w := tabwriter.NewWriter(os.Stderr, 0, 0, 4, ' ', 0)
 	fmt.Fprintln(w, "\t-v, --verbose\t\tDisplay errors")
@@ -108,6 +108,7 @@ func main() {
 		csvWriter = csv.NewWriter(outputWriter)
 		defer csvWriter.Flush()
 	}
+
 	seenNames := make(map[string]map[string]bool)
 	for r := range results {
 
@@ -128,7 +129,6 @@ func main() {
 
 func processIPPort(IP, port string, results chan<- result) {
 	addr := fmt.Sprintf("%s:%s", IP, port)
-
 	conn, err := createConn(addr)
 	if err != nil {
 		logError("Error: connect", addr, err)
