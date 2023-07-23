@@ -1,0 +1,103 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            GOOS: windows
+            GOARCH: amd64
+            EXT: .exe
+          - os: ubuntu-latest
+            GOOS: linux
+            GOARCH: amd64
+          - os: macos-latest
+            GOOS: darwin
+            GOARCH: amd64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.20.6
+
+      - name: Normal build
+        shell: bash
+        run: |
+          GOOS=${{ matrix.GOOS }} GOARCH=${{ matrix.GOARCH }} go build -o build/${{ matrix.GOOS }}/dnsrange-v${{github.ref_name}}${{ matrix.EXT }}
+
+      - name: Static build
+        shell: bash
+        run: |
+          CGO_ENABLED=0 GOOS=${{ matrix.GOOS }} GOARCH=${{ matrix.GOARCH }} go build -a -installsuffix cgo -o build/${{ matrix.GOOS }}/dnsrange-v${{github.ref_name}}-static${{ matrix.EXT }}
+      
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUBPAT }}
+        with:
+          tag_name: ${{github.ref_name}}
+          release_name: Release ${{github.ref_name}}
+          draft: false
+          prerelease: false
+        continue-on-error: true
+          
+      - name: Archive production artifacts
+        uses: actions/upload-release-asset@v1
+        with:
+          name: ${{ matrix.GOOS }}-artifacts
+          path: |
+            build/${{ matrix.GOOS }}/*
+        continue-on-error: true
+        
+      - name: Get release
+        id: get_release
+        run: |
+          import requests
+          import os
+
+          response = requests.get(
+              f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/releases/tags/{os.environ['GITHUB_REF_NAME']}",
+              headers={"Authorization": f"Bearer {os.environ['GITHUBPAT']}"}
+          )
+          response.raise_for_status()
+          upload_url = response.json()["upload_url"].split("{", 1)[0]
+          print(f"::set-output name=upload_url::{upload_url}")
+        env:
+          GITHUBPAT: ${{ secrets.GITHUBPAT }}
+        shell: python
+        
+      - name: List files
+        run: ls -l ./build/linux
+         
+      - name: Upload Release Asset (Normal build)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUBPAT }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}?name=dnsrange-${{ matrix.GOOS }}-v${{github.ref_name}}${{ matrix.EXT }}
+          asset_path: ./build/${{ matrix.GOOS }}/dnsrange-v${{github.ref_name}}${{ matrix.EXT }}
+          asset_name: dnsrange-${{ matrix.GOOS }}-v${{github.ref_name}}${{ matrix.EXT }}
+          asset_content_type: application/octet-stream
+
+      - name: Upload Release Asset (Static build)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUBPAT }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}?name=dnsrange-${{ matrix.GOOS }}-v${{github.ref_name}}-static${{ matrix.EXT }}
+          asset_path: ./build/${{ matrix.GOOS }}/dnsrange-v${{github.ref_name}}-static${{ matrix.EXT }}
+          asset_name: dnsrange-${{ matrix.GOOS }}-v${{github.ref_name}}-static${{ matrix.EXT }}
+          asset_content_type: application/octet-stream
