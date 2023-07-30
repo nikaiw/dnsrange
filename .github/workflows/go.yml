@@ -69,7 +69,7 @@ jobs:
           import os
 
           response = requests.get(
-              "https://api.github.com/repos/" + os.environ['GITHUB_REPOSITORY'] + "/releases/tags/" + os.environ['GITHUB_REF_NAME']",
+              "https://api.github.com/repos/" + os.environ['GITHUB_REPOSITORY'] + "/releases/tags/" + os.environ['GITHUB_REF_NAME'],
               headers={"Authorization": f"Bearer {os.environ['GITHUBPAT']}"}
           )
           response.raise_for_status()
