@@ -65,23 +65,24 @@ jobs:
       - name: Get release
         id: get_release
         run: |
-          import requests
           import os
+          import json
+          try:
+            from urllib.request import Request, urlopen  # for Python 3
+          except ImportError:
+            from urllib2 import Request, urlopen  # for Python 2
 
-          response = requests.get(
-              "https://api.github.com/repos/" + os.environ['GITHUB_REPOSITORY'] + "/releases/tags/" + os.environ['GITHUB_REF_NAME'],
-              headers={"Authorization": "Bearer " + os.environ['GITHUBPAT']}
-          )
-          response.raise_for_status()
-          upload_url = response.json()["upload_url"].split("{", 1)[0]
-          print("::set-output name=upload_url::" + upload_url)
+          url = "https://api.github.com/repos/{0}/releases/tags/{1}".format(os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_REF_NAME'])
+          headers = {"Authorization": "Bearer {0}".format(os.environ['GITHUBPAT'])}
+          request = Request(url, headers=headers)
+          response = urlopen(request)
+          data = json.loads(response.read().decode())
+          upload_url = data["upload_url"].split("{", 1)[0]
+          print("::set-output name=upload_url::{0}".format(upload_url))
         env:
           GITHUBPAT: ${{ secrets.GITHUBPAT }}
         shell: python
         
-      - name: List files
-        run: ls -l ./build/linux
-         
       - name: Upload Release Asset (Normal build)
         uses: actions/upload-release-asset@v1
         env:
