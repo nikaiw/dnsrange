@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"text/tabwriter"
 	"time"
 )
@@ -48,8 +49,33 @@ func printUsage() {
 	w.Flush()
 }
 
+func SetMaximumSoftLimit(desiredSoftLimit uint64) (uint64, error) {
+	var rLimit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		return 0, err
+	}
+	if desiredSoftLimit > rLimit.Max {
+		rLimit.Cur = rLimit.Max
+	} else {
+		rLimit.Cur = desiredSoftLimit
+	}
+	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		return 0, err
+	}
+
+	return rLimit.Cur, nil
+}
+
 func main() {
+	var err error
 	flag.Parse()
+	finalSoftLimit, err := SetMaximumSoftLimit(10000)
+	if err != nil {
+		if verbose {
+			fmt.Printf("Error setting maximum soft limit: %v\n", err)
+		}
+		return
+	}
 
 	if format != "txt" && format != "csv" {
 		fmt.Fprintln(os.Stderr, "Error: Invalid output format. It must be either txt or csv.")
@@ -74,12 +100,17 @@ func main() {
 	results := make(chan result)
 	var wg sync.WaitGroup
 
+	maxGoroutines := int(finalSoftLimit) - 100
+	semaphore := make(chan struct{}, maxGoroutines)
+
 	for _, IP := range IPs {
 		for _, port := range ports {
 			wg.Add(1)
+			semaphore <- struct{}{} // Acquire a token
 			go func(IP, port string) {
 				defer wg.Done()
 				processIPPort(IP, port, results)
+				<-semaphore // Release the token
 			}(IP, port)
 		}
 	}
@@ -89,9 +120,7 @@ func main() {
 		close(results)
 	}()
 
-	// Handle output based on format and output file.
 	var outputWriter *os.File
-	var err error
 	var csvWriter *csv.Writer
 	if output != "" {
 		outputWriter, err = os.Create(output)
@@ -120,7 +149,10 @@ func main() {
 		}
 		seenNames[r.IP][r.Name] = true
 		if format == "csv" {
-			csvWriter.Write([]string{r.IP, r.Name, r.Type})
+			if err := csvWriter.Write([]string{r.IP, r.Name, r.Type}); err != nil {
+				fmt.Fprintf(os.Stderr, "Error writing to CSV: %v\n", err)
+				continue
+			}
 		} else {
 			fmt.Fprintf(outputWriter, "%s:%s\n", r.IP, r.Name)
 		}
