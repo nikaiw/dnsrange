@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/csv"
@@ -40,7 +41,7 @@ func init() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s [options] <IP range> <ports>\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage: %s [options] <CIDR|IP range|file> <ports>\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "Options:")
 	w := tabwriter.NewWriter(os.Stderr, 0, 0, 4, ' ', 0)
 	fmt.Fprintln(w, "\t-v, --verbose\t\tDisplay errors")
@@ -91,12 +92,7 @@ func main() {
 	IPRange := flag.Arg(0)
 	ports := strings.Split(flag.Arg(1), ",")
 
-	var IPs []string
-	if strings.Contains(IPRange, "-") {
-		IPs = generateIPRange(IPRange)
-	} else {
-		IPs = generateCIDRRange(IPRange)
-	}
+	IPs := loadTargets(IPRange)
 
 	results := make(chan result, 1000)
 	var wg sync.WaitGroup
@@ -220,6 +216,40 @@ func logError(msg string, addr string, err error) {
 	if verbose {
 		fmt.Fprintln(os.Stderr, msg, addr, ": ", err)
 	}
+}
+
+func parseTarget(target string) []string {
+	if strings.Contains(target, "-") {
+		return generateIPRange(target)
+	}
+	return generateCIDRRange(target)
+}
+
+func loadTargets(input string) []string {
+	if _, err := os.Stat(input); err == nil {
+		f, err := os.Open(input)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening file: %v\n", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+
+		var IPs []string
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			IPs = append(IPs, parseTarget(line)...)
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+			os.Exit(1)
+		}
+		return IPs
+	}
+	return parseTarget(input)
 }
 
 func generateCIDRRange(cidrRange string) []string {
