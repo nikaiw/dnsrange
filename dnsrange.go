@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/csv"
 	"flag"
@@ -97,25 +98,24 @@ func main() {
 		IPs = generateCIDRRange(IPRange)
 	}
 
-	results := make(chan result)
+	results := make(chan result, 1000)
 	var wg sync.WaitGroup
 
 	maxGoroutines := int(finalSoftLimit) - 100
 	semaphore := make(chan struct{}, maxGoroutines)
 
-	for _, IP := range IPs {
-		for _, port := range ports {
-			wg.Add(1)
-			semaphore <- struct{}{} // Acquire a token
-			go func(IP, port string) {
-				defer wg.Done()
-				processIPPort(IP, port, results)
-				<-semaphore // Release the token
-			}(IP, port)
-		}
-	}
-
 	go func() {
+		for _, IP := range IPs {
+			for _, port := range ports {
+				wg.Add(1)
+				semaphore <- struct{}{} // Acquire a token
+				go func(IP, port string) {
+					defer wg.Done()
+					processIPPort(IP, port, results)
+					<-semaphore // Release the token
+				}(IP, port)
+			}
+		}
 		wg.Wait()
 		close(results)
 	}()
@@ -195,17 +195,18 @@ func createTLSConn(conn net.Conn) (*tls.Conn, error) {
 func processCertificates(tlsConn *tls.Conn, IP string, results chan<- result) {
 	certs := tlsConn.ConnectionState().PeerCertificates
 	for _, cert := range certs {
-		name := cert.Subject.CommonName
-		results <- result{IP: IP, Name: name, Type: "SSL"}
+		results <- result{IP: IP, Name: cert.Subject.CommonName, Type: "SSL"}
 		for _, altName := range cert.DNSNames {
-			results <- result{IP: IP, Name: name, Type: "SSL"}
-			name = altName
+			results <- result{IP: IP, Name: altName, Type: "SSL"}
 		}
 	}
 }
 
 func processRDNS(IP string, results chan<- result) {
-	rDNS, err := net.LookupAddr(IP)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+	resolver := net.Resolver{}
+	rDNS, err := resolver.LookupAddr(ctx, IP)
 	if err != nil {
 		logError("Error: rDNS lookup ", IP, err)
 	} else {
